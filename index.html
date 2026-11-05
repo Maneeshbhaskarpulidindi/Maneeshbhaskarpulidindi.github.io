@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maneesh Bhaskar Pulidindi</title>
+<meta property="og:title" content="Pulidindi Maneesh Bhaskar · Research AI Engineer">
+<meta property="og:description" content="Computer vision for industry: OCR, anomaly detection, depth sensing and GNN research.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0b0e13">
+<meta name="description" content="Pulidindi Maneesh Bhaskar: Research AI Engineer in industrial machine vision. OCR, anomaly detection, depth sensing and GNN research. IIT Bhilai CSE.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: the left column is the dossier and scrolls; the right 42vw is a fixed
+     depth-camera feed whose point cloud re-forms to match the section being read. */
+  --bg:#0b0e13;
+  --panel:#11161f;
+  --line:#232b39;
+  --text:#e9edf3;
+  --muted:#8e99ab;
+  --accent:#ffb547;   /* detection-box amber: near depth */
+  --cool:#4cc4d8;     /* far depth */
+  --display:"Instrument Serif","Iowan Old Style","Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --feed-w:42vw;
+  --step--1:.8125rem; --step-0:1rem; --step-1:1.25rem; --step-2:1.75rem; --step-3:2.75rem; --step-4:clamp(3.2rem,6.4vw,6.4rem);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:400 var(--step-0)/1.6 var(--body);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-color:color-mix(in srgb,var(--accent) 60%,transparent);text-underline-offset:3px}
+a:hover{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+h1,h2,h3,h4{text-wrap:balance;margin:0;font-weight:400}
+p{margin:0}
+.mono{font-family:var(--mono);font-size:var(--step--1);letter-spacing:.02em}
+.muted{color:var(--muted)}
+
+/* ---------- depth feed ---------- */
+.feed{position:fixed;top:0;right:0;width:var(--feed-w);height:100%;border-left:1px solid var(--line);
+  background:radial-gradient(120% 80% at 60% 45%,#141b27 0%,var(--bg) 70%);overflow:hidden;touch-action:none;cursor:grab}
+.feed:active{cursor:grabbing}
+.feed canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;inset:20px;pointer-events:none;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hud .c{position:absolute;width:18px;height:18px;border-color:color-mix(in srgb,var(--text) 45%,transparent);border-style:solid;border-width:0}
+.hud .tl{top:0;left:0;border-top-width:1px;border-left-width:1px}
+.hud .tr{top:0;right:0;border-top-width:1px;border-right-width:1px}
+.hud .bl{bottom:0;left:0;border-bottom-width:1px;border-left-width:1px}
+.hud .br{bottom:0;right:0;border-bottom-width:1px;border-right-width:1px}
+.hud .t{position:absolute;display:flex;gap:14px;white-space:nowrap}
+.hud .t1{top:4px;left:28px}.hud .t2{top:4px;right:28px}.hud .t3{bottom:4px;left:28px}.hud .t4{bottom:4px;right:28px}
+.rec{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff5a4f;margin-right:6px;vertical-align:1px;animation:blink 1.6s steps(2) infinite}
+@keyframes blink{50%{opacity:.25}}
+.tag{position:absolute;left:0;top:0;pointer-events:none;font:500 11px/1 var(--mono);letter-spacing:.04em;color:#14100a;background:var(--accent);padding:4px 6px;white-space:nowrap;transform:translate(-1px,-100%);will-change:transform}
+.legend{position:absolute;right:28px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.legend i{display:block;width:6px;height:120px;background:linear-gradient(#e1efff,var(--cool) 50%,#2942c7)}
+.det-key{display:flex;align-items:center;gap:6px;margin-top:10px}.det-key b{width:8px;height:8px;background:var(--accent)}
+
+/* ---------- dossier ---------- */
+.doc{margin-right:var(--feed-w);padding:0 clamp(20px,5vw,80px)}
+.nav{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 0;
+  background:linear-gradient(var(--bg) 70%,transparent)}
+.mark{font-family:var(--display);font-size:1.5rem;text-decoration:none;line-height:1}
+.mark span{color:var(--accent);font-style:italic}
+.nav ul{display:flex;flex-wrap:wrap;gap:4px 20px;list-style:none;margin:0;padding:0}
+.nav ul a{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;text-decoration:none;color:var(--muted)}
+.nav ul a:hover,.nav ul a[aria-current="true"]{color:var(--text)}
+.nav ul a[aria-current="true"]::before{content:"";display:inline-block;width:6px;height:6px;background:var(--accent);margin-right:7px;vertical-align:1px}
+
+section{padding:clamp(56px,9vw,112px) 0;border-top:1px solid var(--line)}
+section.hero{border-top:0;padding-top:clamp(40px,8vw,104px)}
+.eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:var(--muted);margin-bottom:22px}
+.eyebrow b{font-weight:500;color:var(--text)}
+.eyebrow .sw{width:10px;height:10px;border:1.5px solid var(--accent)}
+
+.hero h1{font-family:var(--display);font-size:var(--step-4);line-height:.95;letter-spacing:-.01em}
+.hero h1 .sur{display:block;font-size:.42em;letter-spacing:.02em;color:var(--muted);margin-bottom:.3em}
+.hero h1 em{color:var(--accent)}
+.role{margin-top:26px;font-size:var(--step-1);line-height:1.45;max-width:34ch}
+.role strong{font-weight:500}
+.lede{margin-top:18px;max-width:60ch;color:var(--muted)}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:12px 18px;font:500 14px/1 var(--body);text-decoration:none;border:1px solid var(--line);color:var(--text);background:var(--panel)}
+.btn:hover{border-color:var(--accent);color:var(--text)}
+.btn.primary{background:var(--accent);color:#17110a;border-color:var(--accent)}
+.btn.primary:hover{background:#ffc56e;color:#17110a}
+.btn svg{width:14px;height:14px}
+
+.readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-top:56px;border:1px solid var(--line)}
+.readouts div{padding:18px 18px 16px;border-left:1px solid var(--line)}
+.readouts div:first-child{border-left:0}
+.readouts b{display:block;font:400 var(--step-3)/1 var(--display);font-variant-numeric:tabular-nums}
+.readouts b small{font-size:.5em;color:var(--accent);margin-left:2px}
+.readouts span{display:block;margin-top:8px;font-size:var(--step--1);color:var(--muted);line-height:1.4}
+
+h2{font-family:var(--display);font-size:var(--step-3);line-height:1.05}
+h2 em{color:var(--accent)}
+.intro{margin-top:14px;max-width:60ch;color:var(--muted)}
+
+/* detection-box card */
+.det{position:relative;padding:28px 26px 26px;margin-top:40px;background:var(--panel);border:1px solid var(--line)}
+.det::before,.det::after{content:"";position:absolute;width:14px;height:14px;border:0 solid var(--accent)}
+.det::before{top:-1px;left:-1px;border-top-width:2px;border-left-width:2px}
+.det::after{bottom:-1px;right:-1px;border-bottom-width:2px;border-right-width:2px}
+.det .lbl{position:absolute;top:0;left:-1px;transform:translateY(-100%);background:var(--accent);color:#17110a;font:500 11px/1 var(--mono);padding:5px 7px;letter-spacing:.04em}
+.det header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 20px}
+.det h3{font-size:var(--step-2);font-family:var(--display);line-height:1.1}
+.det h3 .org{color:var(--muted)}
+.det .when{font-family:var(--mono);font-size:var(--step--1);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.det .note{margin-top:8px;color:var(--muted);max-width:62ch}
+
+.work{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 28px;margin-top:26px}
+.work article{border-top:1px solid var(--line);padding-top:14px}
+.work h4{font-size:var(--step-0);font-weight:600;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.work h4 .k{font:500 12px/1 var(--mono);color:var(--accent);white-space:nowrap}
+.work p{margin-top:6px;font-size:.9375rem;color:#c3cad6;line-height:1.55}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:22px;padding:0;list-style:none}
+.chips li{font:400 12px/1 var(--mono);padding:6px 8px;border:1px solid var(--line);color:#c3cad6;background:color-mix(in srgb,var(--bg) 60%,transparent)}
+
+.list{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:10px}
+.list li{position:relative;padding-left:20px;color:#c3cad6;max-width:68ch}
+.list li::before{content:"";position:absolute;left:0;top:.62em;width:8px;height:1px;background:var(--accent)}
+
+/* projects */
+.projects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin-top:40px}
+.proj{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line)}
+.proj canvas{display:block;width:100%;aspect-ratio:16/9;border-bottom:1px solid var(--line);background:#0d121a}
+.proj .body{display:flex;flex-direction:column;gap:10px;padding:20px 20px 22px;flex:1}
+.proj h3{font-family:var(--display);font-size:var(--step-2);line-height:1.1}
+.proj p{color:#c3cad6;font-size:.9375rem}
+.proj .stack{font:400 12px/1.5 var(--mono);color:var(--muted)}
+.proj .foot{margin-top:auto;padding-top:8px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.proj .metric{font:500 13px/1 var(--mono);color:var(--accent)}
+.proj a.gh{font:500 13px/1 var(--mono);text-decoration:none;color:var(--text);display:inline-flex;gap:6px;align-items:center}
+.proj a.gh:hover{color:var(--accent)}
+
+/* skills */
+.skills{margin-top:36px;display:grid;gap:0;border-top:1px solid var(--line)}
+.skills .row{display:grid;grid-template-columns:170px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}
+.skills .row > span{font:500 12px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.skills .chips{margin-top:0}
+
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin-top:40px}
+.two .det{margin-top:0}
+.edu{display:grid;gap:18px;margin-top:18px}
+.edu div{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
+.edu b{font-weight:500}
+.edu span{font-family:var(--mono);font-size:var(--step--1);color:var(--muted);font-variant-numeric:tabular-nums}
+
+.contact h2{font-size:var(--step-4);line-height:.95}
+.email{display:inline-block;margin-top:28px;font:400 var(--step-2)/1.2 var(--display);word-break:break-all}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;color:var(--muted)}
+
+@media (max-width:1180px){
+  .work,.projects,.two{grid-template-columns:1fr}
+  .readouts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .readouts div:nth-child(3){border-left:0}
+  .readouts div:nth-child(n+3){border-top:1px solid var(--line)}
+}
+@media (max-width:900px){
+  :root{--feed-w:0px}
+  .feed{width:100%;border-left:0;opacity:.32;pointer-events:none}
+  .hud,.tag,.legend{display:none}
+  .doc{margin-right:0}
+  .nav ul{display:none}
+  .det,.proj,.readouts,.skills .row{background:color-mix(in srgb,var(--panel) 88%,transparent)}
+}
+@media (max-width:520px){
+  .skills .row{grid-template-columns:1fr;gap:10px}
+  .det{padding:24px 18px 20px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .rec{animation:none}
+}
+</style>
+</head>
+<body>
+
+<div class="feed" id="feed" aria-label="Interactive 3D point cloud. Drag to rotate." role="img">
+  <canvas id="gl"></canvas>
+  <div class="hud" aria-hidden="true">
+    <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+    <div class="t t1"><span><span class="rec"></span>cam 01 · depth</span><span id="fps">30 fps</span></div>
+    <div class="t t2"><span id="frame">f 000000</span></div>
+    <div class="t t3"><span id="pts">pts 0</span><span id="stat">calibrating</span><span>drag to orbit</span></div>
+    <div class="t t4"><span id="scene">scene: industrial_part</span></div>
+    <div class="legend"><span>near</span><i></i><span>far</span><span class="det-key"><b></b>detection</span></div>
+  </div>
+  <div class="tag" id="tag" aria-hidden="true">industrial_part 0.98</div>
+</div>
+
+<main class="doc">
+  <nav class="nav" aria-label="Sections">
+    <a class="mark" href="#top">P<span>m</span>B</a>
+    <ul>
+      <li><a href="#work">Experience</a></li>
+      <li><a href="#research">Research</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <section class="hero" id="top" data-scene="0">
+    <div class="eyebrow mono"><span class="sw"></span><b>Research AI Engineer</b><span>· Industrial machine vision · Open to roles</span></div>
+    <h1><span class="sur">Pulidindi</span>Maneesh <em>Bhaskar</em></h1>
+    <p class="role">I build computer vision systems that <strong>read, measure and inspect</strong> parts on factory lines, fast enough to run in production.</p>
+    <p class="lede">Research AI Engineer at Frinks.ai, working across research and deployment: scene-text detection, OCR, surface anomaly detection and precision dimensioning. B.Tech in Computer Science &amp; Engineering, IIT Bhilai (2022–2026).</p>
+    <div class="cta">
+      <a class="btn primary" href="#contact">Get in touch</a>
+      <a class="btn" href="cv.pdf" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 13h10"/></svg>Résumé (PDF)</a>
+      <a class="btn" href="https://github.com/Maneeshbhaskarpulidindi" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <div class="readouts" aria-label="Key numbers">
+      <div><b>&lt;40<small>ms</small></b><span>OCR detection latency in production</span></div>
+      <div><b>&lt;100<small>µs</small></b><span>Dimension measurement latency</span></div>
+      <div><b>87<small>%</small></b><span>DeepSuccess accuracy, 8% over prior SOTA</span></div>
+      <div><b>8.27</b><span>CGPA out of 10, IIT Bhilai CSE</span></div>
+    </div>
+  </section>
+
+  <section id="work" data-scene="1">
+    <div class="eyebrow mono"><span class="sw"></span><b>Experience</b><span>· feed: curved batch code, text detected</span></div>
+    <h2>Industry <em>experience</em></h2>
+    <p class="intro">Vision models that ship: trained in research, then optimised with ONNX and TensorRT until they meet the real-time budget of a production line.</p>
+
+    <article class="det">
+      <span class="lbl">current · full-time</span>
+      <header>
+        <h3>Research AI Engineer <span class="org">· Frinks.ai</span></h3>
+        <span class="when">May 2025 – Present</span>
+      </header>
+      <p class="note">Industrial machine vision. Converted from intern to full-time; embedded across the Research and Deployment teams.</p>
+      <div class="work">
+        <article>
+          <h4>Scene text detection &amp; reading direction <span class="k">research</span></h4>
+          <p>Developed a hybrid PSENet + TextSnake architecture for reading-direction-aware text detection, replacing a failing legacy pipeline. Explored RF-DETR with a Bézier head for curved text, and ran comparative studies of CCD, SIGA, DPText-DETR, DeepSolo and ABCNet v1/v2. Used CRAFT for annotation and ground-truth generation.</p>
+        </article>
+        <article>
+          <h4>End-to-end OCR pipelines <span class="k">&lt;40 ms</span></h4>
+          <p>Built and maintain production OCR detection pipelines deployed on Control Print and related industrial quality-control use cases. Trained and fine-tuned PP-OCRv5 for multilingual recognition.</p>
+        </article>
+        <article data-scene="5">
+          <h4>Anomaly detection on custom surfaces <span class="k">DINOv2 · RAG</span></h4>
+          <p>Designed a retrieval-based anomaly detector using DINOv2 patch embeddings and prototype retrieval to find defects on sandpaper and other industrial materials, without large labelled defect datasets.</p>
+        </article>
+        <article>
+          <h4>Training data recommender <span class="k">data</span></h4>
+          <p>Built a recommendation system that curates and prioritises training samples, improving training efficiency across computer vision pipelines.</p>
+        </article>
+        <article data-scene="4">
+          <h4>Dimension measurement system <span class="k">&lt;100 µs</span></h4>
+          <p>Contributed to a precision object-dimensioning pipeline using U²-Net background matting and camera calibration, meeting industrial throughput requirements.</p>
+        </article>
+        <article>
+          <h4>Deployment &amp; inference <span class="k">ONNX · TensorRT</span></h4>
+          <p>Model deployment and inference optimisation across production pipelines on edge and cloud infrastructure, keeping real-time constraints intact.</p>
+        </article>
+      </div>
+      <ul class="chips" aria-label="Technologies">
+        <li>PyTorch</li><li>TensorFlow</li><li>OpenCV</li><li>YOLO</li><li>PSENet</li><li>TextSnake</li><li>RF-DETR</li><li>DPText-DETR</li><li>DeepSolo</li><li>ABCNet</li><li>CRAFT</li><li>DINOv2</li><li>U²-Net</li><li>PP-OCRv5</li><li>ONNX</li><li>TensorRT</li><li>AWS</li>
+      </ul>
+    </article>
+
+    <article class="det">
+      <span class="lbl">internship</span>
+      <header>
+        <h3>Web Development Intern <span class="org">· TeKreant</span></h3>
+        <span class="when">May 2023 – Jun 2023</span>
+      </header>
+      <ul class="list">
+        <li>Contributed to full-stack development of a financial management web application.</li>
+        <li>Built interfaces with React.js, JavaScript and Bootstrap; assisted server-side work in Node.js, Express.js and MongoDB/MySQL.</li>
+        <li>Integrated REST APIs, implemented authentication and authorisation, and improved site performance.</li>
+      </ul>
+    </article>
+  </section>
+
+  <section id="research" data-scene="2">
+    <div class="eyebrow mono"><span class="sw"></span><b>Research</b><span>· feed: web graph, 5 partitions</span></div>
+    <h2>Research <em>experience</em></h2>
+    <p class="intro">From GPU graph partitioning for GNN training to real-time sorting systems on Jetson hardware.</p>
+
+    <article class="det">
+      <span class="lbl">defence · inventory</span>
+      <header>
+        <h3>Research Intern <span class="org">· Indian Army</span></h3>
+        <span class="when">Apr 2024 – Jul 2025</span>
+      </header>
+      <ul class="list">
+        <li>Designed and implemented a secure, real-time Inventory Management System for tracking critical materials, reducing manual overhead.</li>
+        <li>Delivered a scalable, cost-efficient solution deployable across multiple depots and operating environments with minimal hardware changes.</li>
+      </ul>
+    </article>
+
+    <article class="det">
+      <span class="lbl">vision · sorting</span>
+      <header>
+        <h3>Research Intern <span class="org">· Earthnet Resources Pvt. Ltd.</span></h3>
+        <span class="when">Sep 2024 – Feb 2025</span>
+      </header>
+      <p class="note">Mentored by Dr. R. Jose Immanuel, IIT Bhilai.</p>
+      <ul class="list">
+        <li>Developed a real-time computer vision system for automated material separation by size, shape, colour and material type.</li>
+        <li>Combined a SegNeXt-B2 CNN with an LSTM to exploit spatio-temporal patterns, notably improving classification and sorting accuracy.</li>
+        <li>Engineered for diverse materials with minimal hardware reconfiguration, across varied industrial environments.</li>
+      </ul>
+      <ul class="chips" aria-label="Technologies">
+        <li>NVIDIA Jetson</li><li>Intel RealSense</li><li>PyTorch</li><li>YOLO</li><li>SAM</li><li>Open3D</li><li>OpenCV</li><li>Raspberry Pi</li><li>Arduino</li><li>MATLAB</li>
+      </ul>
+    </article>
+
+    <article class="det">
+      <span class="lbl">gpu · graphs</span>
+      <header>
+        <h3>Research Assistant <span class="org">· IIT Bhilai</span></h3>
+        <span class="when">2023 – 2024</span>
+      </header>
+      <p class="note">Under Prof. Vishwesh Jatala. Graph partitioning and compression for GNN training on large web graphs.</p>
+      <ul class="list">
+        <li>Built a GPU-based multi-level graph partitioner that compresses background nodes to speed up target-node classification.</li>
+        <li>Implemented GPU-accelerated coarsening, partitioning and refinement phases, significantly outperforming METIS.</li>
+        <li>Designed coarsening algorithms that preserve spectral properties, cutting GNN training and prediction time with minimal information loss.</li>
+      </ul>
+      <ul class="chips" aria-label="Technologies"><li>CUDA</li><li>GNNs</li><li>Spectral analysis</li><li>METIS</li><li>GPU programming</li></ul>
+    </article>
+
+    <article class="det">
+      <span class="lbl">social networks</span>
+      <header>
+        <h3>Research Assistant <span class="org">· IIT Bhilai</span></h3>
+        <span class="when">Apr 2024 – Jul 2024</span>
+      </header>
+      <p class="note">Under Prof. Soumajit Pramanik. DeepSuccess: forecasting the success of Meetup groups.</p>
+      <ul class="list">
+        <li>Developed a Seq2Seq framework predicting future group success from group size, event topics and popularity trends.</li>
+        <li>Designed a GNN baseline over heterogeneous user–event interaction graphs with affinity-score computation.</li>
+        <li>Reached 87% accuracy, 8% above state-of-the-art baselines.</li>
+      </ul>
+    </article>
+  </section>
+
+  <section id="projects" data-scene="3">
+    <div class="eyebrow mono"><span class="sw"></span><b>Projects</b><span>· feed: lunar DEM, craters detected</span></div>
+    <h2>Selected <em>projects</em></h2>
+    <p class="intro">Depth sensing, brain signals, planetary imagery and social graphs. Code for each is on GitHub.</p>
+    <div class="projects">
+      <article class="proj">
+        <canvas data-art="volume" aria-hidden="true"></canvas>
+        <div class="body">
+          <h3>Depth-sensing volume estimation</h3>
+          <p>Real-time volume estimation with YOLOv5 and an Intel RealSense L515. Reconstructs 3D point clouds in Open3D; tested on 200+ objects, cutting manual measurement time by 60%. Segmentation runs 30% faster with 12% better boundary accuracy.</p>
+          <span class="stack">YOLOv5 · RealSense L515 · Open3D · OpenCV · Python</span>
+          <div class="foot"><span class="metric">89% accuracy</span><a class="gh" href="https://github.com/Maneeshbhaskarpulidindi/DepthSense-Volume-Calculation" target="_blank" rel="noopener">View code ↗</a></div>
+        </div>
+      </article>
+      <article class="proj">
+        <canvas data-art="eeg" aria-hidden="true"></canvas>
+        <div class="body">
+          <h3>EEG classification &amp; image generation</h3>
+          <p>CNN-LSTM hybrid that classifies human EEG signals for early neurological pattern detection, with an SNGAN that synthesises images from EEG to make brain-computer interface research easier to interpret.</p>
+          <span class="stack">PyTorch · TensorFlow · Keras · CNN · LSTM · SNGAN</span>
+          <div class="foot"><span class="metric">85% accuracy</span><a class="gh" href="https://github.com/Maneeshbhaskarpulidindi/decoding_of_human_brain" target="_blank" rel="noopener">View code ↗</a></div>
+        </div>
+      </article>
+      <article class="proj">
+        <canvas data-art="crater" aria-hidden="true"></canvas>
+        <div class="body">
+          <h3>Lunar crater detection with DETR</h3>
+          <p>Trained DETR on the DeepMoon dataset (Kaguya lunar DEMs), converting HDF5 to COCO and evaluating with mAP and IoU. Retrained on Roboflow's Mars and Moon imagery for cross-domain generalisation, and visualised attention maps.</p>
+          <span class="stack">PyTorch · DETR · DeepMoon · COCO · Roboflow</span>
+          <div class="foot"><span class="metric">mAP · IoU</span><a class="gh" href="https://github.com/Maneeshbhaskarpulidindi/Lunar-Crater-Detection" target="_blank" rel="noopener">View code ↗</a></div>
+        </div>
+      </article>
+      <article class="proj">
+        <canvas data-art="seq" aria-hidden="true"></canvas>
+        <div class="body">
+          <h3>Group success prediction in EBSNs</h3>
+          <p>LSTM Seq2Seq model that forecasts the success trajectories of Meetup groups in event-based social networks, outperforming baselines by 10–15%.</p>
+          <span class="stack">PyTorch · LSTM · Seq2Seq</span>
+          <div class="foot"><span class="metric">87% accuracy</span><a class="gh" href="https://github.com/Maneeshbhaskarpulidindi/Deep-Success" target="_blank" rel="noopener">View code ↗</a></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="skills" data-scene="4">
+    <div class="eyebrow mono"><span class="sw"></span><b>Skills &amp; education</b><span>· feed: parcel, volume measured</span></div>
+    <h2>Toolkit</h2>
+    <div class="skills">
+      <div class="row"><span>Languages</span><ul class="chips"><li>Python</li><li>C++</li><li>JavaScript</li><li>SQL</li><li>Bash</li><li>HTML/CSS</li></ul></div>
+      <div class="row"><span>ML &amp; DL</span><ul class="chips"><li>PyTorch</li><li>TensorFlow</li><li>Keras</li><li>Scikit-learn</li><li>Hugging Face</li><li>LangChain</li><li>NLTK</li></ul></div>
+      <div class="row"><span>Computer vision</span><ul class="chips"><li>OpenCV</li><li>YOLO</li><li>DETR</li><li>SAM</li><li>DINOv2</li><li>Open3D</li><li>RealSense SDK</li><li>MediaPipe</li></ul></div>
+      <div class="row"><span>Techniques</span><ul class="chips"><li>Detection</li><li>Segmentation</li><li>OCR</li><li>Anomaly detection</li><li>Transformers</li><li>GANs</li><li>GNNs</li><li>RAG</li><li>LSTMs</li></ul></div>
+      <div class="row"><span>Deployment</span><ul class="chips"><li>ONNX</li><li>TensorRT</li><li>CUDA</li><li>Docker</li><li>AWS</li><li>Jetson</li><li>Raspberry Pi</li><li>Arduino</li></ul></div>
+      <div class="row"><span>Web &amp; data</span><ul class="chips"><li>React</li><li>Node.js</li><li>Express</li><li>Flask</li><li>FastAPI</li><li>PostgreSQL</li><li>MongoDB</li><li>Spark</li><li>Hadoop</li></ul></div>
+    </div>
+
+    <div class="two">
+      <article class="det">
+        <span class="lbl">education</span>
+        <h3>Education</h3>
+        <div class="edu">
+          <div><b>IIT Bhilai · B.Tech, Computer Science &amp; Engineering</b><span>2022 – 2026 · CGPA 8.27/10</span></div>
+          <div><b>Bhashyam Junior College, Guntur · Class XII</b><span>2020 – 2022 · 77.5%</span></div>
+        </div>
+      </article>
+      <article class="det">
+        <span class="lbl">award</span>
+        <h3>Hyundai Hope Scholarship</h3>
+        <p class="note">Hyundai Motor India Foundation. Selected nationwide for academic excellence, leadership and research. Received ₹1,00,000 to run an AI project that optimised installation processes, with significant efficiency gains and cost reduction.</p>
+      </article>
+    </div>
+    <h3 class="mono muted" style="margin-top:44px;text-transform:uppercase;letter-spacing:.06em">Positions of responsibility</h3>
+    <ul class="list">
+      <li>Core Member, DSAI Club, IIT Bhilai: research discussions, knowledge-sharing sessions and AI initiatives.</li>
+      <li>Core Member, Ingenuity Coding Club, IIT Bhilai.</li>
+      <li>Member, Placement Team: coordinated campus drives, recruiter communication and interviews.</li>
+      <li>Member, Event Management, Sponsorship &amp; Outreach Team; Member, Management Committee.</li>
+    </ul>
+  </section>
+
+  <section class="contact" id="contact" data-scene="0">
+    <div class="eyebrow mono"><span class="sw"></span><b>Contact</b><span>· replies within a day</span></div>
+    <h2>Hiring for vision or <em>ML</em>?</h2>
+    <p class="intro">I am looking for roles in computer vision, ML research and ML engineering. Email is the fastest way to reach me.</p>
+    <a class="email" href="mailto:pulidindim@iitbhilai.ac.in">pulidindim@iitbhilai.ac.in</a>
+    <div class="links">
+      <a class="btn" href="https://www.linkedin.com/in/maneesh-bhskar-88625a288/" target="_blank" rel="noopener">LinkedIn</a>
+      <a class="btn" href="https://github.com/Maneeshbhaskarpulidindi" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn" href="https://www.kaggle.com/pulidindimanish" target="_blank" rel="noopener">Kaggle</a>
+      <a class="btn" href="https://leetcode.com/u/bhaskarpmaneesh/" target="_blank" rel="noopener">LeetCode</a>
+      <a class="btn" href="https://codeforces.com/profile/pulidindim" target="_blank" rel="noopener">Codeforces</a>
+      <a class="btn" href="https://www.codechef.com/users/uyurfrbrr6rytf" target="_blank" rel="noopener">CodeChef</a>
+    </div>
+  </section>
+
+  <footer class="mono">
+    <span>© 2026 Pulidindi Maneesh Bhaskar</span>
+    <span>Point clouds rendered live with Three.js</span>
+  </footer>
+</main>
+
+<script id="three-js" defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- project thumbnails (2D canvas) ---------------- */
+  const C = { bg:'#0d121a', line:'#232b39', text:'#e9edf3', muted:'#8e99ab', amber:'#ffb547', cool:'#4cc4d8', blue:'#3f63e6' };
+  function rng(seed){ return () => (seed = (seed*16807) % 2147483647) / 2147483647; }
+  function depthCol(t){ // 0 far .. 1 near
+    const a=[63,99,230], b=[76,196,216], c=[255,181,71];
+    const m=(x,y,k)=>x.map((v,i)=>Math.round(v+(y[i]-v)*k));
+    const col = t<.5 ? m(a,b,t*2) : m(b,c,(t-.5)*2);
+    return `rgb(${col})`;
+  }
+  function bbox(g,x,y,w,h,label){
+    g.strokeStyle=C.amber; g.lineWidth=1.5; g.strokeRect(x,y,w,h);
+    g.font='500 11px "IBM Plex Mono", monospace';
+    const tw=g.measureText(label).width+10;
+    g.fillStyle=C.amber; g.fillRect(x-.75,y-17,tw,17);
+    g.fillStyle='#17110a'; g.fillText(label,x+4,y-5);
+  }
+  const arts = {
+    volume(g,W,H){
+      const r=rng(7), cx=W*.5, cy=H*.56, s=Math.min(W,H)*.32;
+      const iso=(x,y,z)=>[cx+(x-z)*s*.87, cy+(x+z)*s*.5-y*s];
+      // floor grid
+      g.strokeStyle=C.line; g.lineWidth=1;
+      for(let i=-4;i<=4;i++){ let a=iso(i*.3,0,-1.2),b=iso(i*.3,0,1.2); g.beginPath();g.moveTo(...a);g.lineTo(...b);g.stroke();
+        a=iso(-1.2,0,i*.3);b=iso(1.2,0,i*.3); g.beginPath();g.moveTo(...a);g.lineTo(...b);g.stroke(); }
+      const bx=.55,by=.7,bz=.42;
+      for(let i=0;i<2600;i++){
+        let x=(r()*2-1)*bx,y=r()*by,z=(r()*2-1)*bz; const f=Math.floor(r()*3);
+        if(f===0) y=by; else if(f===1) x=bx; else z=bz;
+        const [px,py]=iso(x,y,z); const t=Math.min(1,Math.max(0,(x+z+y)/1.6+.35));
+        g.fillStyle=depthCol(t); g.globalAlpha=.85; g.fillRect(px,py,1.6,1.6);
+      }
+      g.globalAlpha=1;
+      const p=[iso(-bx,by,bz),iso(bx,0,-bz),iso(bx,by,-bz),iso(bx,0,bz),iso(-bx,0,bz)];
+      const xs=p.map(q=>q[0]), ys=[iso(-bx,by,-bz)[1],iso(bx,0,bz)[1]];
+      bbox(g,Math.min(...xs)-8,Math.min(...ys)-8,Math.max(...xs)-Math.min(...xs)+16,Math.max(...ys)-Math.min(...ys)+16,'box · 3.64 L');
+    },
+    eeg(g,W,H){
+      const r=rng(3), n=8, top=26, gap=(H-top-14)/n;
+      g.font='400 10px "IBM Plex Mono", monospace';
+      for(let c=0;c<n;c++){
+        const y0=top+gap*(c+.5);
+        g.fillStyle=C.muted; g.fillText(['Fp1','Fp2','F3','F4','C3','C4','O1','O2'][c],10,y0+3);
+        g.strokeStyle=c===5?C.amber:depthCol(.15+c*.08); g.lineWidth=c===5?1.5:1; g.beginPath();
+        const f1=.02+r()*.03,f2=.11+r()*.08,ph=r()*9;
+        for(let x=42;x<W-10;x+=2){
+          const burst=c===5? Math.exp(-Math.pow((x-W*.62)/(W*.07),2))*1.6:0;
+          const y=y0+(Math.sin(x*f1+ph)*.35+Math.sin(x*f2+ph*2)*.25+(r()-.5)*.5)*gap*.42*(1+burst);
+          x===42?g.moveTo(x,y):g.lineTo(x,y);
+        }
+        g.stroke();
+      }
+      bbox(g,W*.52,top+gap*5-2,W*.2,gap+6,'spike 0.85');
+    },
+    crater(g,W,H){
+      const r=rng(11);
+      const img=g.createImageData(W,H), d=img.data;
+      const cr=[[.22,.42,.13],[.6,.3,.09],[.74,.68,.16],[.4,.75,.07],[.88,.25,.05],[.12,.8,.06]];
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const u=x/W,v=y/H; let h=.5+.08*Math.sin(u*13+v*5)+.05*Math.sin(v*21-u*7)+(r()-.5)*.06;
+        for(const [cx,cy,rr] of cr){ const dd=Math.hypot((u-cx)*W/H,v-cy)/rr; if(dd<1) h-= .35*(1-dd*dd); h+= .18*Math.exp(-Math.pow((dd-1)/.18,2)); }
+        const k=Math.max(0,Math.min(1,h)), i=(y*W+x)*4, g2=40+k*120;
+        d[i]=g2*.92; d[i+1]=g2*.96; d[i+2]=g2*1.05; d[i+3]=255;
+      }
+      g.putImageData(img,0,0);
+      cr.slice(0,4).forEach(([cx,cy,rr],i)=>{ const w=rr*2.3*H; bbox(g,cx*W-w/2,cy*H-w/2,w,w,['crater 0.97','crater 0.93','crater 0.91','crater 0.88'][i]); });
+    },
+    seq(g,W,H){
+      const r=rng(5), L=40, R=W-20, B=H-28, T=28, mid=L+(R-L)*.62;
+      g.strokeStyle=C.line; g.lineWidth=1;
+      for(let i=0;i<4;i++){ const y=T+(B-T)*i/3; g.beginPath(); g.moveTo(L,y); g.lineTo(R,y); g.stroke(); }
+      g.setLineDash([3,4]); g.beginPath(); g.moveTo(mid,T-8); g.lineTo(mid,B); g.stroke(); g.setLineDash([]);
+      g.font='400 10px "IBM Plex Mono", monospace'; g.fillStyle=C.muted;
+      g.fillText('history',L,B+18); g.fillText('forecast',mid+6,B+18);
+      const groups=[[.25,.012,C.cool],[.5,.006,C.blue],[.4,-.004,'#5f6b80']];
+      groups.forEach(([s,tr,col],gi)=>{
+        let v=s; const pts=[];
+        for(let x=L;x<=R;x+=6){ v+= tr+(r()-.5)*.04; v=Math.max(.05,Math.min(.95,v)); pts.push([x,B-(B-T)*v]); }
+        g.strokeStyle=col; g.lineWidth=1.5; g.beginPath();
+        pts.forEach(([x,y],i)=>{ if(x>mid && gi!==0) return; i?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke();
+        if(gi===0){ g.strokeStyle=C.amber; g.setLineDash([5,4]); g.beginPath(); let f=false;
+          pts.forEach(([x,y])=>{ if(x<mid) return; f?g.lineTo(x,y-6):g.moveTo(x,y-6); f=true; }); g.stroke(); g.setLineDash([]);
+          const last=pts[pts.length-1]; g.fillStyle=C.amber; g.beginPath(); g.arc(last[0],last[1]-6,3.5,0,7); g.fill();
+          g.font='500 11px "IBM Plex Mono", monospace'; g.fillText('p(success) 0.87',last[0]-110,last[1]-16);
+        }
+      });
+    }
+  };
+  function drawArts(){
+    document.querySelectorAll('canvas[data-art]').forEach(cv=>{
+      const dpr=Math.min(2,devicePixelRatio||1), W=cv.clientWidth, H=cv.clientHeight;
+      if(!W||!H) return;
+      cv.width=W*dpr; cv.height=H*dpr;
+      const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+      g.fillStyle=C.bg; g.fillRect(0,0,W,H);
+      if(cv.dataset.art==='crater'){ // pixel-level art drawn at device res
+        g.setTransform(1,0,0,1,0,0); const s=dpr;
+        const off=document.createElement('canvas'); off.width=W; off.height=H;
+        const og=off.getContext('2d'); arts.crater(og,W,H);
+        g.imageSmoothingEnabled=true; g.drawImage(off,0,0,W*s,H*s); return;
+      }
+      arts[cv.dataset.art](g,W,H);
+    });
+  }
+  (document.fonts?.ready||Promise.resolve()).then(drawArts);
+  let rt; addEventListener('resize',()=>{clearTimeout(rt); rt=setTimeout(drawArts,150);});
+
+  /* ---------------- nav highlight + scene tracking ---------------- */
+  const sections=[...document.querySelectorAll('section[id]')];
+  const sceneEls=[...document.querySelectorAll('[data-scene]')];
+  const navLinks=[...document.querySelectorAll('.nav ul a')];
+  let sceneIdx=0, onScene=()=>{}, ticking=false;
+  function track(){
+    ticking=false;
+    const y=innerHeight*.45;
+    let cur=sections[0]; for(const s of sections){ if(s.getBoundingClientRect().top<y) cur=s; }
+    navLinks.forEach(a=>a.setAttribute('aria-current', a.getAttribute('href')==='#'+cur.id ? 'true':'false'));
+    let se=sceneEls[0]; for(const s of sceneEls){ if(s.getBoundingClientRect().top<y) se=s; }
+    const idx=+se.dataset.scene; if(idx!==sceneIdx){ sceneIdx=idx; onScene(idx); }
+  }
+  addEventListener('scroll',()=>{ if(!ticking){ ticking=true; requestAnimationFrame(track); } },{passive:true}); track();
+
+  /* ---------------- 3D depth feed ---------------- */
+  const threeTag=document.getElementById('three-js');
+  if(window.THREE) init3D(); else threeTag.addEventListener('load',init3D,{once:true});
+
+  function init3D(){
+  if(!window.THREE) return;
+  const feed=document.getElementById('feed'), canvas=document.getElementById('gl'), tagEl=document.getElementById('tag');
+  const small=matchMedia('(max-width:900px)').matches;
+  const N=small?6000:12000;
+  const R=rng(42);
+  const gauss=()=>{ let u=0,v=0; while(!u)u=R(); while(!v)v=R(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+  const rotXp=(x,y,z,ang)=>{ const c=Math.cos(ang),s=Math.sin(ang); return [x,y*c-z*s,y*s+z*c]; };
+
+  // Each shape returns {p: positions, h: highlight 0..1}. Highlighted points are the "detection".
+  function mk(){ return {p:new Float32Array(N*3), h:new Float32Array(N)}; }
+  const shapes=[
+    function knot(){ // machined part
+      const o=mk(), p=2,q=3, sc=.5, tube=.23;
+      const curve=u=>{ const r=Math.cos(q*u)+2; return [r*Math.cos(p*u)*sc, r*Math.sin(p*u)*sc, -Math.sin(q*u)*sc]; };
+      for(let i=0;i<N;i++){
+        const u=R()*Math.PI*2, c=curve(u), c2=curve(u+.001);
+        let T=[c2[0]-c[0],c2[1]-c[1],c2[2]-c[2]]; const tl=Math.hypot(...T); T=T.map(v=>v/tl);
+        let Nn=[T[1],-T[0],0]; const nl=Math.hypot(...Nn)||1; Nn=Nn.map(v=>v/nl);
+        const B=[T[1]*Nn[2]-T[2]*Nn[1], T[2]*Nn[0]-T[0]*Nn[2], T[0]*Nn[1]-T[1]*Nn[0]];
+        const v=R()*Math.PI*2, cv=Math.cos(v)*tube, sv=Math.sin(v)*tube;
+        o.p.set([c[0]+cv*Nn[0]+sv*B[0], c[1]+cv*Nn[1]+sv*B[1], c[2]+cv*Nn[2]+sv*B[2]],i*3);
+        o.h[i]=0;
+      }
+      return o;
+    },
+    function bottle(){ // curved batch code on a bottle: OCR / scene text
+      const o=mk(), W=420, H=150, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+      const g=cv.getContext('2d'); g.fillStyle='#fff'; g.font='bold 58px monospace'; g.textBaseline='middle'; g.textAlign='center';
+      g.fillText('LOT B2611',W/2,40); g.fillText('EXP 11/27',W/2,112);
+      const d=g.getImageData(0,0,W,H).data, txt=[];
+      for(let y=0;y<H;y+=2) for(let x=0;x<W;x+=2) if(d[(y*W+x)*4+3]>128) txt.push([x/W,y/H]);
+      const prof=y=> y<.45 ? .72 : y<1.0 ? .72-(.44*(1-Math.cos((y-.45)/.55*Math.PI))/2) : y<1.45 ? .28 : 0;
+      for(let i=0;i<N;i++){
+        let x,y,z,h=0;
+        if(R()<.34 && txt.length){
+          const [u,v]=txt[Math.floor(R()*txt.length)], a=(u-.5)*1.7+(R()-.5)*.004, yy=.25-v*.95;
+          const r=.735; x=Math.sin(a)*r; z=Math.cos(a)*r; y=yy; h=1;
+        } else {
+          y=-1.35+R()*2.8; const a=R()*Math.PI*2; let r=prof(y);
+          if(y>1.45){ y=1.45; r=Math.sqrt(R())*.28; }       // cap
+          if(R()<.06){ y=-1.35; r=Math.sqrt(R())*.72; }       // base
+          if(y>1.2&&y<1.45&&R()<.5) r=.31;                    // cap ridges
+          x=Math.sin(a)*r; z=Math.cos(a)*r;
+        }
+        o.p.set([x,y-.05,z],i*3); o.h[i]=h;
+      }
+      return o;
+    },
+    function graph(){ // partitioned web graph, one partition selected
+      const o=mk(), K=5, M=50, centers=[], nodes=[], edges=[];
+      for(let k=0;k<K;k++){ const t=k/K*Math.PI*2; centers.push([Math.cos(t)*1.1,(k%2?.38:-.38),Math.sin(t)*1.1]); }
+      for(let m=0;m<M;m++){ const c=centers[m%K]; nodes.push([c[0]+gauss()*.26,c[1]+gauss()*.26,c[2]+gauss()*.26]); }
+      for(let m=0;m<M;m++){ for(let j=0;j<2;j++){ const ot=(m%K)+K*Math.floor(R()*(M/K)); if(ot<M&&ot!==m) edges.push([m,ot]); }
+        if(R()<.2) edges.push([m,Math.floor(R()*M)]); }
+      for(let i=0;i<N;i++){
+        let p, h=0;
+        if(R()<.5){ const ni=Math.floor(R()*M), n=nodes[ni]; p=[n[0]+gauss()*.035,n[1]+gauss()*.035,n[2]+gauss()*.035]; h=ni%K===0?1:0; }
+        else { const [s,e]=edges[Math.floor(R()*edges.length)], t=R(), A=nodes[s], B=nodes[e];
+          p=[A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t,A[2]+(B[2]-A[2])*t]; h=(s%K===0&&e%K===0)?1:0; }
+        o.p.set(p,i*3); o.h[i]=h;
+      }
+      return o;
+    },
+    function terrain(){ // lunar DEM, largest crater detected
+      const o=mk(), cr=[[-.7,-.3,.5],[.6,.4,.38],[.2,-.7,.26],[-.2,.65,.22],[1.05,-.45,.2],[-1.15,.6,.18]];
+      for(let i=0;i<N;i++){
+        const x=(R()*2-1)*1.75, z=(R()*2-1)*1.35;
+        let y=.05*Math.sin(x*3+z*1.3)+.04*Math.sin(z*5-x*2)+(R()-.5)*.02;
+        for(const [cx,cz,r] of cr){ const d=Math.hypot(x-cx,z-cz)/r; if(d<1) y-=.32*r*(1-d*d)*1.6; y+=.12*r*Math.exp(-(((d-1)/.2)**2))*1.6; }
+        o.p.set(rotXp(x,y-.15,z,.5),i*3); o.h[i]=Math.hypot(x+.7,z+.3)<.62?1:0;
+      }
+      return o;
+    },
+    function parcel(){ // parcel on a floor, volume estimation
+      const o=mk(), bx=.8, by=.52, bz=.58, fy=-.7;
+      const pm=()=>R()<.5?-1:1;
+      for(let i=0;i<N;i++){
+        let x,y,z,h=1;
+        if(R()<.3){ x=(R()*2-1)*1.8; z=(R()*2-1)*1.4; y=fy; h=0; if(Math.abs(x)<bx&&Math.abs(z)<bz){ y=fy+by*2; h=1; } }
+        else { x=(R()*2-1)*bx; y=fy+R()*by*2; z=(R()*2-1)*bz; const f=Math.floor(R()*5);
+          if(f===0) y=fy+by*2; else if(f===1) x=bx*pm(); else if(f===2) z=bz*pm(); else if(f===3){ x=bx*pm(); z=bz*pm(); } else { y=fy+by*2; x=bx*pm(); } }
+        o.p.set([x,y,z],i*3); o.h[i]=h;
+      }
+      return o;
+    },
+    function surface(){ // sandpaper sheet with one defect
+      const o=mk();
+      for(let i=0;i<N;i++){
+        const x=(R()*2-1)*1.75, z=(R()*2-1)*1.3;
+        let y=.1*Math.sin(x*1.4)*Math.cos(z*1.1)+(R()-.5)*.045;
+        const d2=(x-.55)**2+(z+.25)**2; y-=.4*Math.exp(-d2/.05);
+        o.p.set(rotXp(x,y,z,.45),i*3); o.h[i]=d2<.075?1:0;
+      }
+      return o;
+    }
+  ];
+  const labels=[
+    ['industrial_part 0.98','industrial_part'],
+    ['text 0.97 · "LOT B2611"','curved_text_ocr'],
+    ['partition 1/5 · 10 nodes','web_graph'],
+    ['crater 0.91 · r 0.5','lunar_dem'],
+    ['parcel · 3.64 L','volume_estimation'],
+    ['defect 0.94 · dent','sandpaper_surface']
+  ];
+  const targets=shapes.map(f=>f());
+  const boxes=targets.map(t=>{ // box around highlighted points, else all points
+    const any=t.h.some(v=>v>.5), mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<N;i++){ if(any&&t.h[i]<.5) continue;
+      for(let k=0;k<3;k++){ const v=t.p[i*3+k]; if(v<mn[k])mn[k]=v; if(v>mx[k])mx[k]=v; } }
+    const pad=.07; return {c:mn.map((v,k)=>(v+mx[k])/2), s:mn.map((v,k)=>mx[k]-v+pad*2)};
+  });
+
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,powerPreference:'high-performance'});
+  let PR=Math.min(small?1.5:1.75,devicePixelRatio||1); renderer.setPixelRatio(PR);
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(38,1,.1,60);
+  const group=new THREE.Group(); scene.add(group);
+
+  // GPU morph: every point has a "from" and "to" position; the shader blends them.
+  const aFrom=new Float32Array(N*3), aTo=new Float32Array(N*3), aHiF=new Float32Array(N), aHiT=new Float32Array(N), aRand=new Float32Array(N);
+  for(let i=0;i<N;i++){ aRand[i]=R();
+    const r=3.2+R()*2.5, t=R()*6.283, ph=Math.acos(2*R()-1);
+    aFrom.set([r*Math.sin(ph)*Math.cos(t), r*Math.cos(ph), r*Math.sin(ph)*Math.sin(t)],i*3); }
+  const geo=new THREE.BufferGeometry();
+  const at=(arr,n)=>new THREE.BufferAttribute(arr,n);
+  geo.setAttribute('position',at(aTo,3)); geo.setAttribute('aFrom',at(aFrom,3)); geo.setAttribute('aTo',at(aTo,3));
+  geo.setAttribute('aHiF',at(aHiF,1)); geo.setAttribute('aHiT',at(aHiT,1)); geo.setAttribute('aRand',at(aRand,1));
+
+  const U={ uTime:{value:0}, uScan:{value:-9}, uSize:{value:2.5}, uCam:{value:6.4}, uPR:{value:PR},
+            uMorph:{value:0}, uMouse:{value:new THREE.Vector2(9,9)}, uAspect:{value:1}, uLens:{value:0} };
+  const mat=new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, uniforms:U,
+    vertexShader:`
+      attribute vec3 aFrom; attribute vec3 aTo; attribute float aRand,aHiF,aHiT;
+      uniform float uTime,uScan,uSize,uCam,uPR,uMorph,uAspect,uLens; uniform vec2 uMouse;
+      varying vec3 vCol; varying float vA;
+      float ease(float p){ return p<.5 ? 4.*p*p*p : 1.-pow(-2.*p+2.,3.)/2.; }
+      void main(){
+        float e=ease(clamp(uMorph*1.5-aRand*.5,0.,1.));
+        vec3 sw=vec3(sin(aRand*91.7),cos(aRand*47.3),sin(aRand*13.1+1.))*.45*sin(e*3.14159265);
+        vec3 p=mix(aFrom,aTo,e)+sw;
+        float hi=mix(aHiF,aHiT,e);
+        p+=.006*vec3(sin(uTime*2.+aRand*40.),cos(uTime*1.7+aRand*60.),sin(uTime*2.3+aRand*80.));
+        vec4 wp=modelMatrix*vec4(p,1.); vec4 mv=viewMatrix*wp;
+        vec4 cp=projectionMatrix*mv; vec2 ndc=cp.xy/cp.w;
+        vec2 dv=(ndc-uMouse)*vec2(uAspect,1.); float dl=length(dv);
+        float lens=smoothstep(.38,0.,dl)*uLens;
+        mv.xy+=(dv/max(dl,1e-4))*lens*.22*(-mv.z/uCam);
+        float depth=-mv.z, t=clamp((uCam+.9-depth)/2.2,0.,1.);
+        vec3 c = t<.5 ? mix(vec3(.16,.26,.78),vec3(.27,.70,.84),t*2.) : mix(vec3(.27,.70,.84),vec3(.88,.94,1.),(t-.5)*2.);
+        c=mix(c,vec3(1.,.66,.22),hi*.92);
+        float band=exp(-pow((wp.y-uScan)*9.,2.));
+        vCol=mix(c,vec3(1.),band*.8)+lens*vec3(.45,.3,.1);
+        vA=.55+hi*.25+band*.45+lens*.3;
+        gl_Position=projectionMatrix*mv;
+        gl_PointSize=uSize*uPR*(1.+band*1.1+hi*.3+lens*.9)*(uCam/depth);
+      }`,
+    fragmentShader:`
+      varying vec3 vCol; varying float vA;
+      void main(){ float d=length(gl_PointCoord-.5)*2.; if(d>1.) discard; float a=1.-d; gl_FragColor=vec4(vCol,vA*a*a*1.4); }`
+  });
+  const points=new THREE.Points(geo,mat); points.frustumCulled=false; group.add(points);
+
+  // detection box drawn as corner brackets
+  const bp=[];
+  for(const sx of [-.5,.5]) for(const sy of [-.5,.5]) for(const sz of [-.5,.5]){
+    const L=.22; bp.push(sx,sy,sz, sx-Math.sign(sx)*L,sy,sz, sx,sy,sz, sx,sy-Math.sign(sy)*L,sz, sx,sy,sz, sx,sy,sz-Math.sign(sz)*L); }
+  const brGeo=new THREE.BufferGeometry(); brGeo.setAttribute('position',new THREE.Float32BufferAttribute(bp,3));
+  const brackets=new THREE.LineSegments(brGeo,new THREE.LineBasicMaterial({color:0xffb547}));
+  const thin=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0xffb547,transparent:true,opacity:.18}));
+  const boxObj=new THREE.Group(); boxObj.add(brackets,thin); group.add(boxObj);
+  const bc=new THREE.Vector3(...boxes[0].c), bs=new THREE.Vector3(...boxes[0].s);
+
+  // structured-light scan sheet
+  const sheet=new THREE.Mesh(new THREE.PlaneGeometry(5.4,5.4),new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+    vertexShader:`varying vec2 vU; void main(){ vU=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader:`varying vec2 vU; void main(){ float r=length(vU-.5)*2.; float a=(1.-smoothstep(.15,1.,r))*.06; gl_FragColor=vec4(.75,.88,1.,a); }`
+  }));
+  sheet.rotation.x=-Math.PI/2; scene.add(sheet);
+
+  // measurement floor grid that fades with distance
+  const gp=[]; for(let i=-10;i<=10;i++){ const v=i*.4; gp.push(-4,0,v, 4,0,v, v,0,-4, v,0,4); }
+  const gGeo=new THREE.BufferGeometry(); gGeo.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
+  const grid=new THREE.LineSegments(gGeo,new THREE.ShaderMaterial({transparent:true,depthWrite:false,
+    vertexShader:`varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader:`varying vec3 vP; void main(){ float a=(1.-smoothstep(1.2,3.8,length(vP.xz)))*.16; gl_FragColor=vec4(.55,.62,.75,a); }`}));
+  grid.position.y=-1.95; scene.add(grid);
+
+  // morph state (mirrors the shader so a new morph can start mid-flight)
+  const DUR=reduce?1:1700; let mStart=performance.now()-(reduce?DUR:0), tIdx=-1;
+  const ease=p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+  function morphTo(i){
+    if(i===tIdx) return;
+    const m=Math.min(1,(performance.now()-mStart)/DUR), T=targets[i];
+    if(tIdx>=0){
+      for(let k=0;k<N;k++){
+        const r=aRand[k], e=ease(Math.min(1,Math.max(0,m*1.5-r*.5))), s=.45*Math.sin(e*Math.PI);
+        aFrom[k*3]  =aFrom[k*3]  +(aTo[k*3]  -aFrom[k*3])*e  +Math.sin(r*91.7)*s;
+        aFrom[k*3+1]=aFrom[k*3+1]+(aTo[k*3+1]-aFrom[k*3+1])*e+Math.cos(r*47.3)*s;
+        aFrom[k*3+2]=aFrom[k*3+2]+(aTo[k*3+2]-aFrom[k*3+2])*e+Math.sin(r*13.1+1)*s;
+        aHiF[k]=aHiF[k]+(aHiT[k]-aHiF[k])*e;
+      }
+      mStart=reduce?performance.now()-DUR:performance.now();
+    }
+    aTo.set(T.p); aHiT.set(T.h); tIdx=i;
+    for(const n of ['aFrom','aTo','aHiF','aHiT','position']) geo.attributes[n].needsUpdate=true;
+    tagEl.textContent=labels[i][0]; sceneEl.textContent='scene: '+labels[i][1];
+    dirty=true;
+  }
+  const sceneEl=document.getElementById('scene');
+  let dirty=true;
+  onScene=morphTo; morphTo(sceneIdx);
+
+  // interaction: drag to orbit, hover for a lens
+  let rotY=.5, rotX=.05, velY=0, velX=0, drag=false, lx=0, ly=0, mx=0, my=0, hover=false;
+  feed.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;feed.setPointerCapture(e.pointerId);});
+  feed.addEventListener('pointermove',e=>{
+    const r=feed.getBoundingClientRect(); mx=(e.clientX-r.left)/r.width; my=(e.clientY-r.top)/r.height;
+    U.uMouse.value.set(mx*2-1,-(my*2-1)); hover=e.pointerType==='mouse'; dirty=true;
+    if(!drag) return; velY=(e.clientX-lx)*.005; velX=(e.clientY-ly)*.004; lx=e.clientX; ly=e.clientY; });
+  const end=()=>{drag=false;}; feed.addEventListener('pointerup',end); feed.addEventListener('pointercancel',end);
+  feed.addEventListener('pointerleave',()=>{hover=false;});
+
+  function resize(){
+    const w=feed.clientWidth, h=feed.clientHeight; if(!w||!h) return;
+    renderer.setSize(w,h,false); camera.aspect=w/h; U.uAspect.value=w/h;
+    const tv=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)), half=Math.min(Math.atan(tv),Math.atan(tv*camera.aspect));
+    const z=2.15/Math.sin(half); camera.position.set(0,z*.22,z); camera.lookAt(0,-.1,0);
+    U.uCam.value=camera.position.length(); camera.updateProjectionMatrix(); dirty=true;
+  }
+  addEventListener('resize',resize); resize();
+
+  const fpsEl=document.getElementById('fps'), frameEl=document.getElementById('frame'), ptsEl=document.getElementById('pts'), statEl=document.getElementById('stat');
+  ptsEl.textContent='pts '+N.toLocaleString('en-US');
+  let frame=0, last=performance.now(), acc=0, cnt=0, slow=0, lastStat='', lastTag='';
+  const v=new THREE.Vector3(), tmp=new THREE.Vector3();
+  function tick(now){
+    requestAnimationFrame(tick);
+    const dt=Math.min(.05,(now-last)/1000); last=now;
+    acc+=dt; cnt++;
+    if(acc>1){ const fps=cnt/acc; fpsEl.textContent=Math.round(fps)+' fps';
+      // adaptive quality: drop resolution once if the device struggles
+      if(fps<42 && PR>1 && ++slow>=2){ PR=1; renderer.setPixelRatio(1); U.uPR.value=1; resize(); }
+      acc=0; cnt=0; }
+    const m=Math.min(1,(now-mStart)/DUR);
+    U.uMorph.value=m;
+    const stat=m<1?'reconstructing '+String(Math.round(m*100)).padStart(2,'0')+'%':'locked';
+    if(stat!==lastStat){ statEl.textContent=stat; lastStat=stat; }
+    U.uLens.value+=((hover&&!drag?1:0)-U.uLens.value)*.12;
+    const B=boxes[tIdx], bk=reduce?1:.09; bc.lerp(tmp.set(...B.c),bk); bs.lerp(tmp.set(...B.s),bk);
+    boxObj.position.copy(bc); boxObj.scale.copy(bs);
+    if(!drag){ velY*=.94; velX*=.9; }
+    rotY+=velY+(reduce?0:.0022); rotX=Math.max(-.6,Math.min(.8,rotX+velX)); if(drag){velY*=.5;velX*=.5;}
+    group.rotation.set(rotX+(my-.5)*.12,rotY,(mx-.5)*-.05);
+    U.uTime.value=reduce?0:now/1000;
+    const scan=reduce?-9:((now/1000*.3)%1)*4.6-2.3; U.uScan.value=scan; sheet.position.y=scan;
+    sheet.visible=!reduce;
+    // with reduced motion, only draw when something changed
+    if(reduce && !dirty && m>=1 && Math.abs(velY)<1e-4 && U.uLens.value<.01) return;
+    dirty=false; frame++;
+    if(frame%2===0) frameEl.textContent='f '+String(frame).padStart(6,'0');
+    renderer.render(scene,camera);
+    group.updateMatrixWorld();
+    v.set(bc.x-bs.x/2,bc.y+bs.y/2,bc.z+bs.z/2).applyMatrix4(group.matrixWorld).project(camera);
+    const x=Math.max(8,Math.min(feed.clientWidth-180,(v.x*.5+.5)*feed.clientWidth)), y=Math.max(30,(-v.y*.5+.5)*feed.clientHeight);
+    const tr=`translate(${x.toFixed(0)}px,${(y-22).toFixed(0)}px)`;
+    if(tr!==lastTag){ tagEl.style.transform=tr; lastTag=tr; }
+  }
+  requestAnimationFrame(tick);
+  }
+})();
+</script>
+</body>
+</html>
